@@ -1,0 +1,1919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NH₃ Filter Monitor</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #07090d;
+  --s1:        #0c1018;
+  --s2:        #111822;
+  --s3:        #18212e;
+  --border:    #1d2a3a;
+  --border2:   #263548;
+  --amber:     #f59e0b;
+  --amber2:    #fbbf24;
+  --amber-dim: rgba(245,158,11,.12);
+  --teal:      #2dd4bf;
+  --teal-dim:  rgba(45,212,191,.10);
+  --red:       #f43f5e;
+  --red-dim:   rgba(244,63,94,.12);
+  --green:     #10b981;
+  --green-dim: rgba(16,185,129,.10);
+  --purple:    #8b5cf6;
+  --blue:      #3b82f6;
+  --text:      #e2e8f0;
+  --text2:     #94a3b8;
+  --text3:     #475569;
+  --display:   'Rajdhani', sans-serif;
+  --mono:      'IBM Plex Mono', monospace;
+  --body:      'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Background grid ── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(29,42,58,.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29,42,58,.4) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Nav ── */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(7,9,13,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 28px;
+  border-right: 1px solid var(--border);
+  min-width: 200px;
+}
+
+.logo-icon {
+  width: 32px; height: 32px;
+  border: 1.5px solid var(--amber);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.logo-icon::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--amber);
+  border-radius: 3px;
+  opacity: .4;
+}
+
+.logo-icon span {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--amber);
+  letter-spacing: -1px;
+}
+
+.logo-text {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text);
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.nav-tabs {
+  display: flex;
+  flex: 1;
+}
+
+.nav-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px;
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .2s;
+  border-right: 1px solid var(--border);
+  user-select: none;
+}
+
+.nav-tab:hover { color: var(--text2); background: rgba(255,255,255,.02); }
+.nav-tab.active { color: var(--amber); border-bottom-color: var(--amber); background: var(--amber-dim); }
+
+.nav-tab-num {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.nav-tab.active .nav-tab-num { border-color: var(--amber); color: var(--amber); }
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: auto;
+  border-left: 1px solid var(--border);
+}
+
+.nav-right-item {
+  padding: 0 18px;
+  border-right: 1px solid var(--border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+#conn-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+#conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  transition: background .4s, box-shadow .4s;
+  flex-shrink: 0;
+}
+
+#conn-dot.connected    { background: var(--green);  box-shadow: 0 0 8px var(--green);  animation: pulse 2.5s infinite; }
+#conn-dot.connecting   { background: var(--amber);  box-shadow: 0 0 8px var(--amber);  animation: pulse .7s infinite; }
+#conn-dot.disconnected { background: var(--red);    box-shadow: 0 0 8px var(--red); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+#conn-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 1px;
+}
+
+.nav-clock {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  letter-spacing: 2px;
+}
+
+.btn-config {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 18px;
+  height: 100%;
+  transition: all .2s;
+  text-transform: uppercase;
+}
+.btn-config:hover { color: var(--amber); background: var(--amber-dim); }
+
+/* ── Alert bar ── */
+#alert-bar {
+  display: none;
+  position: relative;
+  z-index: 90;
+  background: var(--red);
+  color: #fff;
+  text-align: center;
+  padding: 10px;
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  animation: alertpulse 1s infinite;
+}
+@keyframes alertpulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+
+/* ── Status strip ── */
+.status-strip {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.ss-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ss-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.ss-val {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+/* ── Pages ── */
+.page { display: none; position: relative; z-index: 10; }
+.page.active { display: block; }
+
+.page-inner {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 24px 22px;
+}
+
+/* ── Section title ── */
+.section-title {
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::before {
+  content: '';
+  width: 20px; height: 1px;
+  background: var(--amber);
+  opacity: .5;
+}
+
+/* ── Grid ── */
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.mb { margin-bottom: 20px; }
+
+@media(max-width:1100px){.g4{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.g4,.g3,.g2{grid-template-columns:1fr}}
+
+/* ── Card ── */
+.card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: 0;
+  transition: opacity .4s;
+}
+
+.card.lit::before { opacity: .5; }
+
+.card-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,.2);
+}
+
+.card-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.card-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+/* ── Arc gauge ── */
+.gauge-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 16px 14px;
+  gap: 8px;
+}
+
+.gauge-svg-container {
+  position: relative;
+  width: 160px;
+  height: 96px;
+}
+
+.gauge-svg { overflow: visible; }
+
+.gauge-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.gauge-fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  transition: stroke-dashoffset .9s cubic-bezier(.4,0,.2,1), stroke .5s;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.gauge-glow {
+  fill: none;
+  stroke-width: 14;
+  stroke-linecap: round;
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  transition: stroke-dashoffset .9s cubic-bezier(.4,0,.2,1);
+  opacity: .12;
+}
+
+.gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 4px;
+}
+
+.gauge-val {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  transition: color .5s;
+  letter-spacing: -1px;
+}
+
+.gauge-unit {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  margin-top: 1px;
+}
+
+.gauge-bottom {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gauge-label {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: color .5s;
+}
+
+.gauge-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 1px;
+}
+
+/* ── Chart ── */
+canvas#mainChart { width: 100% !important; height: 200px !important; display: block; }
+
+.chart-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.leg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.leg-line {
+  width: 18px; height: 2px;
+  border-radius: 1px;
+}
+
+/* ── Actuator card ── */
+.act-card {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  transition: border-color .3s;
+}
+
+.act-card.running { border-color: var(--teal); }
+.act-card.running .act-header { background: var(--teal-dim); }
+
+.act-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background .3s;
+}
+
+.act-name {
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  padding: 4px 12px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.pill-on  { background: var(--green-dim);  color: var(--green);  border: 1px solid rgba(16,185,129,.3); }
+.pill-off { background: rgba(71,85,105,.15); color: var(--text3); border: 1px solid var(--border); }
+.pill-manual { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,.3); }
+
+.act-body { padding: 16px 18px; }
+
+.act-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.act-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.act-meta b { color: var(--amber); }
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--teal);
+}
+
+.timer-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timer-field label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+input[type=number] {
+  width: 64px;
+  background: var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  padding: 6px 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  transition: border-color .2s;
+}
+
+input[type=number]:focus { border-color: var(--amber); }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Buttons ── */
+.btn {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all .2s;
+}
+
+.btn-primary { background: var(--amber); color: #0c0800; }
+.btn-primary:hover { background: var(--amber2); }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+}
+.btn-ghost:hover { border-color: var(--teal); color: var(--teal); }
+
+.btn-danger { background: var(--red-dim); border: 1px solid rgba(244,63,94,.3); color: var(--red); }
+.btn-danger:hover { background: rgba(244,63,94,.2); }
+
+.btn-teal { background: var(--teal-dim); border: 1px solid rgba(45,212,191,.3); color: var(--teal); }
+.btn-teal:hover { background: rgba(45,212,191,.2); }
+
+/* ── Event log ── */
+.log-list {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 10px 16px;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+}
+
+.log-list::-webkit-scrollbar { width: 3px; }
+.log-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 12px;
+  animation: slidein .25s ease;
+  opacity: .85;
+}
+
+@keyframes slidein { from { opacity:0; transform: translateY(-4px); } to { opacity:.85; } }
+
+.log-time { color: var(--text3); }
+.log-msg.safe   { color: var(--green); }
+.log-msg.warn   { color: var(--amber); }
+.log-msg.danger { color: var(--red); }
+.log-msg.info   { color: var(--teal); }
+.log-msg.ph     { color: var(--purple); }
+
+/* ── Device status grid ── */
+.dev-grid {
+  display: grid;
+  grid-template-columns: repeat(6,1fr);
+  gap: 0;
+}
+
+@media(max-width:900px) { .dev-grid { grid-template-columns: repeat(3,1fr); } }
+
+.dev-item {
+  padding: 14px 16px;
+  border-right: 1px solid var(--border);
+}
+
+.dev-item:last-child { border-right: none; }
+
+.dev-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.dev-val {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* ── Calibration page ── */
+.cal-header {
+  background: var(--amber-dim);
+  border: 1px solid rgba(245,158,11,.2);
+  border-radius: 2px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.cal-live-item {}
+.cal-live-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--amber);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.cal-live-val {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--amber2);
+}
+
+.cal-block {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.cal-block-hdr {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,.2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cal-block-title {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.cal-block-body { padding: 18px; }
+
+.warn-notice {
+  background: rgba(245,158,11,.07);
+  border: 1px solid rgba(245,158,11,.2);
+  border-left: 3px solid var(--amber);
+  border-radius: 2px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.cal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cal-row:last-child { border-bottom: none; padding-bottom: 0; }
+
+.cal-row-label {
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.cal-row-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 3px;
+}
+
+.cal-row-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.live-reading {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  min-width: 80px;
+  text-align: right;
+}
+
+/* ── History page ── */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(5,1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media(max-width:800px) { .stats-bar { grid-template-columns: repeat(3,1fr); } }
+
+.stat-tile {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 14px 16px;
+}
+
+.stat-tile-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.stat-tile-val {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--amber);
+}
+
+.hist-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+input[type=text] {
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  padding: 8px 14px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  width: 220px;
+  transition: border-color .2s;
+}
+input[type=text]:focus { border-color: var(--amber); }
+input[type=text]::placeholder { color: var(--text3); }
+
+.tbl-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 580px;
+}
+
+thead th {
+  padding: 10px 14px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text3);
+  background: var(--s1);
+  border-bottom: 1px solid var(--border2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: color .2s;
+}
+
+thead th:hover { color: var(--amber); }
+thead th.sort-active { color: var(--amber); }
+
+tbody tr {
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  transition: background .15s;
+}
+
+tbody tr:hover { background: rgba(255,255,255,.025); }
+
+tbody td {
+  padding: 9px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.eff-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.eff-bg { flex:1; background: var(--border); border-radius: 2px; height:4px; min-width: 50px; }
+.eff-fill { height: 4px; border-radius: 2px; background: var(--teal); }
+
+.empty-state {
+  text-align: center;
+  padding: 48px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text3);
+  letter-spacing: 2px;
+}
+
+/* ── Config modal ── */
+#modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.85);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+#modal-backdrop.open { display: flex; }
+
+.modal {
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-top: 2px solid var(--amber);
+  border-radius: 2px;
+  padding: 32px;
+  width: 420px;
+  max-width: 95vw;
+}
+
+.modal-title {
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+
+.modal-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 1px;
+  margin-bottom: 24px;
+}
+
+.fg { margin-bottom: 14px; }
+.fg label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.fi {
+  width: 100%;
+  background: var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color .2s;
+}
+.fi:focus { border-color: var(--amber); }
+
+.frow { display: flex; gap: 12px; }
+.frow .fg { flex: 1; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--s3);
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  color: var(--amber);
+  padding: 10px 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity .3s, transform .3s;
+  pointer-events: none;
+  z-index: 9000;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<div id="alert-bar">⚠ CRITICAL — HIGH NH₃ DETECTED AT OUTLET — CHECK FILTER IMMEDIATELY ⚠</div>
+
+<!-- Config modal -->
+<div id="modal-backdrop">
+  <div class="modal">
+    <div class="modal-title">MQTT Config</div>
+    <div class="modal-sub">Configure broker connection for remote access</div>
+    <div class="fg"><label>Broker host</label><input class="fi" id="cfg-host" value="broker.hivemq.com"></div>
+    <div class="frow">
+      <div class="fg"><label>Port (WSS)</label><input class="fi" id="cfg-port" value="8884"></div>
+      <div class="fg"><label>Client ID</label><input class="fi" id="cfg-cid" value="dashboard-filter-001"></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label>Username</label><input class="fi" id="cfg-user" value=""></div>
+      <div class="fg"><label>Password</label><input class="fi" id="cfg-pass" type="password" value=""></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px;font-size:13px;padding:12px" onclick="startMQTT()">Connect to Broker</button>
+    <div style="margin-top:14px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">Uses the free public HiveMQ broker — no account or credentials needed. Both ESP32 and dashboard must use the same broker.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">
+    <div class="logo-icon"><span>NH₃</span></div>
+    <div>
+      <div class="logo-text">Filter Monitor</div>
+      <div class="logo-sub">Process Control</div>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <div class="nav-tab active" onclick="showPage('dash',this)">
+      <span class="nav-tab-num">01</span> Dashboard
+    </div>
+    <div class="nav-tab" onclick="showPage('cal',this)">
+      <span class="nav-tab-num">02</span> Calibration
+    </div>
+    <div class="nav-tab" onclick="showPage('hist',this)">
+      <span class="nav-tab-num">03</span> History
+    </div>
+  </div>
+  <div class="nav-right">
+    <div class="nav-right-item">
+      <div id="conn-wrap" onclick="showModal()">
+        <div id="conn-dot"></div>
+        <span id="conn-label">DISCONNECTED</span>
+      </div>
+    </div>
+    <div class="nav-right-item">
+      <div class="nav-clock" id="clock">--:--:--</div>
+    </div>
+    <button class="btn-config" onclick="showModal()">Config</button>
+  </div>
+</nav>
+
+<!-- Status strip -->
+<div class="status-strip">
+  <div class="ss-item"><span class="ss-label">IP</span><span class="ss-val" id="sr-ip">--</span></div>
+  <div class="ss-item"><span class="ss-label">RSSI</span><span class="ss-val" id="sr-rssi">--</span></div>
+  <div class="ss-item"><span class="ss-label">Uptime</span><span class="ss-val" id="sr-uptime">--</span></div>
+  <div class="ss-item"><span class="ss-label">Heap</span><span class="ss-val" id="sr-heap">--</span></div>
+  <div class="ss-item"><span class="ss-label">Log entries</span><span class="ss-val" id="sr-logs">0</span></div>
+</div>
+
+
+<!-- ═══════════════════════════════════ PAGE: DASHBOARD -->
+<div class="page active" id="page-dash">
+<div class="page-inner">
+
+  <!-- Gauges -->
+  <div class="section-title">Sensor readings</div>
+  <div class="g4 mb">
+
+    <!-- Inlet -->
+    <div class="card" id="card-inlet">
+      <div class="card-hdr">
+        <span class="card-label">NH₃ Inlet</span>
+        <span class="card-tag" style="background:rgba(244,63,94,.12);color:var(--red);border:1px solid rgba(244,63,94,.25)">RAW GAS</span>
+      </div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 160 118" width="160" height="118" style="overflow:visible">
+          <path class="gauge-track" d="M 18 88 A 62 62 0 0 1 142 88"/>
+          <path class="gauge-glow"  id="glow-inlet" d="M 18 88 A 62 62 0 0 1 142 88" stroke="#f43f5e"/>
+          <path class="gauge-fill"  id="arc-inlet"  d="M 18 88 A 62 62 0 0 1 142 88" stroke="#f43f5e"/>
+          <text id="v-inlet"  x="80" y="76" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="28" font-weight="600" fill="#f43f5e" letter-spacing="-1">--</text>
+          <text                x="80" y="90" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9"  fill="#475569" letter-spacing="2">PPM</text>
+          <text id="l-inlet"  x="80"  y="108" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="18" font-weight="600" fill="#475569" letter-spacing="2">WAITING</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Outlet -->
+    <div class="card" id="card-outlet">
+      <div class="card-hdr">
+        <span class="card-label">NH₃ Outlet</span>
+        <span class="card-tag" style="background:var(--green-dim);color:var(--green);border:1px solid rgba(16,185,129,.25)">FILTERED</span>
+      </div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 160 118" width="160" height="118" style="overflow:visible">
+          <path class="gauge-track" d="M 18 88 A 62 62 0 0 1 142 88"/>
+          <path class="gauge-glow"  id="glow-outlet" d="M 18 88 A 62 62 0 0 1 142 88" stroke="#10b981"/>
+          <path class="gauge-fill"  id="arc-outlet"  d="M 18 88 A 62 62 0 0 1 142 88" stroke="#10b981"/>
+          <text id="v-outlet" x="80" y="76" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="28" font-weight="600" fill="#10b981" letter-spacing="-1">--</text>
+          <text               x="80" y="90" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9"  fill="#475569" letter-spacing="2">PPM</text>
+          <text id="l-outlet" x="80"  y="108" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="18" font-weight="600" fill="#475569" letter-spacing="2">WAITING</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- pH -->
+    <div class="card" id="card-ph">
+      <div class="card-hdr">
+        <span class="card-label">pH Level</span>
+        <span class="card-tag" style="background:rgba(139,92,246,.12);color:var(--purple);border:1px solid rgba(139,92,246,.25)">LIQUID</span>
+      </div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 160 118" width="160" height="118" style="overflow:visible">
+          <path class="gauge-track" d="M 18 88 A 62 62 0 0 1 142 88"/>
+          <path class="gauge-glow"  id="glow-ph" d="M 18 88 A 62 62 0 0 1 142 88" stroke="#8b5cf6"/>
+          <path class="gauge-fill"  id="arc-ph"  d="M 18 88 A 62 62 0 0 1 142 88" stroke="#8b5cf6"/>
+          <text id="v-ph"  x="80" y="76" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="28" font-weight="600" fill="#8b5cf6" letter-spacing="-1">--</text>
+          <text            x="80" y="90" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9"  fill="#475569" letter-spacing="2">pH</text>
+          <text id="l-ph"  x="80"  y="108" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="18" font-weight="600" fill="#475569" letter-spacing="2">WAITING</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Efficiency -->
+    <div class="card" id="card-eff">
+      <div class="card-hdr">
+        <span class="card-label">Filter Efficiency</span>
+        <span class="card-tag" id="eff-tag" style="background:var(--teal-dim);color:var(--teal);border:1px solid rgba(45,212,191,.25)">--</span>
+      </div>
+      <div class="gauge-wrap">
+        <svg class="gauge-svg" viewBox="0 0 160 118" width="160" height="118" style="overflow:visible">
+          <path class="gauge-track" d="M 18 88 A 62 62 0 0 1 142 88"/>
+          <path class="gauge-glow"  id="glow-eff" d="M 18 88 A 62 62 0 0 1 142 88" stroke="#2dd4bf"/>
+          <path class="gauge-fill"  id="arc-eff"  d="M 18 88 A 62 62 0 0 1 142 88" stroke="#2dd4bf"/>
+          <text id="v-eff"  x="80" y="76" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="28" font-weight="600" fill="#2dd4bf" letter-spacing="-1">--</text>
+          <text             x="80" y="90" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9"  fill="#475569" letter-spacing="2">%</text>
+          <text id="l-eff"  x="80"  y="108" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="18" font-weight="600" fill="#475569" letter-spacing="2">WAITING</text>
+        </svg>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Chart -->
+  <div class="section-title">Live trend — last 80 readings</div>
+  <div class="card mb">
+    <div class="card-hdr">
+      <div class="chart-legend">
+        <div class="leg"><div class="leg-line" style="background:var(--red)"></div>NH₃ Inlet</div>
+        <div class="leg"><div class="leg-line" style="background:var(--green)"></div>NH₃ Outlet</div>
+        <div class="leg"><div class="leg-line" style="background:var(--purple)"></div>pH</div>
+        <div class="leg"><div class="leg-line" style="background:var(--amber)"></div>Efficiency</div>
+      </div>
+      <span class="card-label" id="avg-label" style="font-size:10px;font-family:var(--mono);font-weight:400;letter-spacing:2px;color:var(--text3)">AVG --</span>
+    </div>
+    <div style="padding:14px 16px 12px">
+      <canvas id="mainChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Fan + Pump -->
+  <div class="section-title">Actuator control</div>
+  <div class="g2 mb">
+
+    <div class="act-card" id="act-fan">
+      <div class="act-header">
+        <span class="act-name">Inlet Exhaust Fan</span>
+        <span class="pill pill-off" id="badge-fan">OFF</span>
+      </div>
+      <div class="act-body">
+        <div class="act-info-row">
+          <span class="act-meta">Mode: <b id="mode-fan">AUTO</b></span>
+          <span class="countdown">⏱ <span id="cd-fan">--</span></span>
+        </div>
+        <div class="timer-row">
+          <div class="timer-field">
+            <label>ON (min)</label>
+            <input type="number" id="fan-on" value="15" min="1">
+          </div>
+          <div class="timer-field">
+            <label>OFF (min)</label>
+            <input type="number" id="fan-off" value="420" min="1">
+          </div>
+          <div style="align-self:flex-end">
+            <button class="btn btn-ghost" onclick="updateFanTimer()">Update</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-teal"   onclick="sendCmd('actuator/fan/cmd','MANUAL_ON')">Manual ON</button>
+          <button class="btn btn-danger" onclick="sendCmd('actuator/fan/cmd','MANUAL_OFF')">Manual OFF</button>
+          <button class="btn btn-ghost"  onclick="sendCmd('actuator/fan/cmd','AUTO')">Resume Auto</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="act-card" id="act-pump">
+      <div class="act-header">
+        <span class="act-name">Outlet Air Pump</span>
+        <span class="pill pill-off" id="badge-pump">OFF</span>
+      </div>
+      <div class="act-body">
+        <div class="act-info-row">
+          <span class="act-meta">Mode: <b id="mode-pump">AUTO</b></span>
+          <span class="countdown">⏱ <span id="cd-pump">--</span></span>
+        </div>
+        <div class="timer-row">
+          <div class="timer-field">
+            <label>Delay (min)</label>
+            <input type="number" id="pump-delay" value="360" min="1">
+          </div>
+          <div class="timer-field">
+            <label>ON (min)</label>
+            <input type="number" id="pump-on" value="60" min="1">
+          </div>
+          <div class="timer-field">
+            <label>OFF (min)</label>
+            <input type="number" id="pump-off" value="375" min="1">
+          </div>
+          <div style="align-self:flex-end">
+            <button class="btn btn-ghost" onclick="updatePumpTimer()">Update</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-teal"   onclick="sendCmd('actuator/pump/cmd','MANUAL_ON')">Manual ON</button>
+          <button class="btn btn-danger" onclick="sendCmd('actuator/pump/cmd','MANUAL_OFF')">Manual OFF</button>
+          <button class="btn btn-ghost"  onclick="sendCmd('actuator/pump/cmd','AUTO')">Resume Auto</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Event log -->
+  <div class="section-title">Event log</div>
+  <div class="card mb">
+    <div class="card-hdr">
+      <span class="card-label" id="log-count" style="font-size:10px;font-family:var(--mono);font-weight:400;letter-spacing:2px;color:var(--text3)">0 entries</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="downloadCSV()">Download CSV</button>
+        <button class="btn btn-danger"  onclick="clearData()">Clear Log</button>
+      </div>
+    </div>
+    <div class="log-list" id="log-body"></div>
+  </div>
+
+  <!-- Device status -->
+  <div class="section-title">Device status</div>
+  <div class="card mb">
+    <div class="dev-grid">
+      <div class="dev-item"><div class="dev-label">IP Address</div><div class="dev-val" id="s-ip">--</div></div>
+      <div class="dev-item"><div class="dev-label">WiFi RSSI</div><div class="dev-val" id="s-rssi">--</div></div>
+      <div class="dev-item"><div class="dev-label">Uptime</div><div class="dev-val" id="s-uptime">--</div></div>
+      <div class="dev-item"><div class="dev-label">Free heap</div><div class="dev-val" id="s-heap">--</div></div>
+      <div class="dev-item"><div class="dev-label">Fan</div><div class="dev-val" id="s-fan">--</div></div>
+      <div class="dev-item"><div class="dev-label">Pump</div><div class="dev-val" id="s-pump">--</div></div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">
+        If dashboard values are stuck or not updating — reboot the ESP32 remotely.
+      </div>
+      <button class="btn btn-danger" id="reboot-btn" onclick="rebootESP32()">
+        ⟳ Reboot ESP32
+      </button>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════ PAGE: CALIBRATION -->
+<div class="page" id="page-cal">
+<div class="page-inner">
+
+  <div class="section-title">Live sensor readings</div>
+  <div class="cal-header mb">
+    <div class="cal-live-item">
+      <div class="cal-live-label">pH Voltage</div>
+      <div class="cal-live-val" id="lv-phv">-- V</div>
+    </div>
+    <div class="cal-live-item">
+      <div class="cal-live-label">Current pH</div>
+      <div class="cal-live-val" id="lv-ph">--</div>
+    </div>
+    <div class="cal-live-item">
+      <div class="cal-live-label">MQ inlet voltage</div>
+      <div class="cal-live-val" id="lv-mqv">-- V</div>
+    </div>
+    <div class="cal-live-item">
+      <div class="cal-live-label">Current R0</div>
+      <div class="cal-live-val" id="lv-r0">-- kΩ</div>
+    </div>
+  </div>
+
+  <div class="section-title">pH calibration — two-point</div>
+  <div class="cal-block mb">
+    <div class="cal-block-hdr">
+      <div class="cal-block-title">pH 4.0 & pH 10.0 Buffer Solutions</div>
+    </div>
+    <div class="cal-block-body">
+      <div class="warn-notice">Immerse the pH probe fully in the buffer solution. Wait 30–60 seconds for the voltage to stabilise before pressing Calibrate. Rinse probe between solutions.</div>
+      <div class="cal-row">
+        <div>
+          <div class="cal-row-label">pH 4.0 Buffer</div>
+          <div class="cal-row-sub">Saved: <span id="saved-ph4">-- V</span></div>
+        </div>
+        <div class="cal-row-right">
+          <span class="live-reading" id="live-ph4">-- V live</span>
+          <button class="btn btn-primary" onclick="calCmd('CAL4','pH 4 calibrated')">Calibrate pH 4</button>
+        </div>
+      </div>
+      <div class="cal-row">
+        <div>
+          <div class="cal-row-label">pH 10.0 Buffer</div>
+          <div class="cal-row-sub">Saved: <span id="saved-ph10">-- V</span></div>
+        </div>
+        <div class="cal-row-right">
+          <span class="live-reading" id="live-ph10">-- V live</span>
+          <button class="btn btn-primary" onclick="calCmd('CAL10','pH 10 calibrated')">Calibrate pH 10</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">MQ-137 R0 calibration</div>
+  <div class="cal-block mb">
+    <div class="cal-block-hdr">
+      <div class="cal-block-title">Baseline R0 — Clean Air</div>
+    </div>
+    <div class="cal-block-body">
+      <div class="warn-notice">Move sensor to a well-ventilated area with no ammonia. Allow 2–3 minutes warm-up before calibrating. Both inlet sensors use the same R0.</div>
+      <div class="cal-row">
+        <div>
+          <div class="cal-row-label">Inlet sensor baseline R0</div>
+          <div class="cal-row-sub">Saved: <span id="saved-r0">-- kΩ</span></div>
+        </div>
+        <div class="cal-row-right">
+          <span class="live-reading" id="live-r0v">-- V live</span>
+          <button class="btn btn-primary" onclick="calCmd('CALR0','R0 calibrated')">Calibrate R0 (clean air)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Reset</div>
+  <div class="cal-block mb">
+    <div class="cal-block-hdr">
+      <div class="cal-block-title">Reset to factory defaults</div>
+    </div>
+    <div class="cal-block-body">
+      <div class="cal-row">
+        <div>
+          <div class="cal-row-label">Reset all calibration values</div>
+          <div class="cal-row-sub">pH4 → 3.00 V &nbsp;|&nbsp; pH10 → 2.00 V &nbsp;|&nbsp; R0 → 20.0 kΩ</div>
+        </div>
+        <div class="cal-row-right">
+          <button class="btn btn-danger" onclick="if(confirm('Reset all calibration to defaults?')) calCmd('RESET','Calibration reset to defaults')">Reset Defaults</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<!-- ═══════════════════════════════════ PAGE: HISTORY -->
+<div class="page" id="page-hist">
+<div class="page-inner">
+
+  <div class="section-title">Statistics</div>
+  <div class="stats-bar mb">
+    <div class="stat-tile"><div class="stat-tile-label">Total entries</div><div class="stat-tile-val" id="h-count">--</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Avg inlet ppm</div><div class="stat-tile-val" id="h-in">--</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Avg outlet ppm</div><div class="stat-tile-val" id="h-out">--</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Avg efficiency</div><div class="stat-tile-val" id="h-eff">--</div></div>
+    <div class="stat-tile"><div class="stat-tile-label">Avg pH</div><div class="stat-tile-val" id="h-ph">--</div></div>
+  </div>
+
+  <div class="section-title">Data log</div>
+  <div class="hist-toolbar">
+    <input type="text" id="hist-search" placeholder="Search entries..." oninput="renderHistory()">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost"   onclick="renderHistory()">Refresh</button>
+      <button class="btn btn-primary" onclick="downloadCSV()">Download CSV</button>
+      <button class="btn btn-danger"  onclick="clearData()">Clear Log</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="hSort('e')">#<span id="arr-e"></span></th>
+            <th onclick="hSort('inlet')">Inlet ppm<span id="arr-inlet"></span></th>
+            <th onclick="hSort('outlet')">Outlet ppm<span id="arr-outlet"></span></th>
+            <th onclick="hSort('eff')">Efficiency<span id="arr-eff"></span></th>
+            <th onclick="hSort('ph')">pH<span id="arr-ph"></span></th>
+            <th>Fan</th>
+            <th>Pump</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</div>
+
+
+<script>
+// ── State ──────────────────────────────────────────────
+let mqttClient = null;
+const MAX_PTS = 80;
+const h = { inlet:[], outlet:[], ph:[], eff:[] };
+const dataLog = [];
+const MAX_LOG = 5000;
+let logEntry = 0;
+let latestInlet=null, latestOutlet=null, latestEff=null, latestPh=null;
+let latestFan=0, latestPump=0;
+let hSortKey='e', hSortDir=-1;
+
+// ── Load saved log from localStorage ──────────────────
+(function loadSavedLog() {
+  try {
+    const saved = localStorage.getItem('nh3_datalog');
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0) return;
+    parsed.forEach(r => dataLog.push(r));
+    logEntry = dataLog[dataLog.length - 1].e || dataLog.length;
+    const cnt = dataLog.length;
+    document.getElementById('log-count').textContent = cnt + ' entries';
+    document.getElementById('sr-logs').textContent   = cnt;
+    console.log(`Restored ${cnt} log entries from localStorage`);
+  } catch(e) {
+    console.warn('Could not restore log:', e);
+  }
+})();
+
+// ── Clock ──────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8);
+}, 1000);
+
+// ── Page switching ─────────────────────────────────────
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(el) el.classList.add('active');
+  if(id==='hist') renderHistory();
+}
+
+// ── Modal ──────────────────────────────────────────────
+function showModal() { document.getElementById('modal-backdrop').classList.add('open'); }
+function hideModal() { document.getElementById('modal-backdrop').classList.remove('open'); }
+window.addEventListener('DOMContentLoaded', () => document.getElementById('modal-backdrop').classList.add('open'));
+
+// ── Toast ──────────────────────────────────────────────
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Countdown format ───────────────────────────────────
+function fmtMs(ms) {
+  if(ms<=0) return 'imminent';
+  const s=Math.floor(ms/1000);
+  const hh=Math.floor(s/3600), mm=Math.floor((s%3600)/60), ss=s%60;
+  return hh>0?`${hh}h ${mm}m ${ss}s`:mm>0?`${mm}m ${ss}s`:`${ss}s`;
+}
+
+// ── Arc gauge ──────────────────────────────────────────
+// Arc total length for d="M 18 88 A 62 62 0 0 1 142 88" (semi-circle) ≈ π*62 ≈ 194.8
+const ARC_LEN = 194.8;
+function setGauge(arcId, glowId, valId, lblId, val, maxVal, color, label, unit) {
+  const pct    = Math.min(Math.max(parseFloat(val) / maxVal, 0), 1);
+  const offset = ARC_LEN - pct * ARC_LEN;
+
+  const arcEl  = document.getElementById(arcId);
+  const glowEl = document.getElementById(glowId);
+  arcEl.style.strokeDasharray   = ARC_LEN;
+  arcEl.style.strokeDashoffset  = offset;
+  arcEl.style.stroke            = color;
+  glowEl.style.strokeDasharray  = ARC_LEN;
+  glowEl.style.strokeDashoffset = offset;
+  glowEl.style.stroke           = color;
+
+  // SVG <text> elements use setAttribute('fill') not style.color
+  const valEl = document.getElementById(valId);
+  const displayVal = unit === 'pH'
+    ? parseFloat(val).toFixed(2)
+    : unit === '%'
+      ? parseFloat(val).toFixed(1)
+      : parseFloat(val).toFixed(2);
+  valEl.textContent = displayVal;
+  valEl.setAttribute('fill', color);
+
+  if (lblId) {
+    const lblEl = document.getElementById(lblId);
+    lblEl.textContent = label;
+    lblEl.setAttribute('fill', color);
+  }
+}
+
+// ── Color helpers ──────────────────────────────────────
+function nhColor(v) {
+  if(v<25)  return {c:'var(--green)', l:'SAFE'};
+  if(v<50)  return {c:'var(--amber)', l:'CAUTION'};
+  if(v<75)  return {c:'#f97316',      l:'WARNING'};
+  return          {c:'var(--red)',    l:'DANGER'};
+}
+function phColor(v) {
+  if(v<5)   return {c:'var(--red)',    l:'ACIDIC'};
+  if(v<7.5) return {c:'var(--green)',  l:'NEUTRAL'};
+  if(v<9)   return {c:'var(--purple)', l:'BASIC'};
+  return          {c:var_amber,        l:'ALKALINE'};
+}
+const var_amber = '#f59e0b';
+function phColor2(v) {
+  if(v<5)   return {c:'var(--red)',    l:'ACIDIC'};
+  if(v<7.5) return {c:'var(--green)',  l:'NEUTRAL'};
+  if(v<9)   return {c:'var(--purple)', l:'BASIC'};
+  return          {c:'var(--amber)',   l:'ALKALINE'};
+}
+function effColor(v) {
+  if(v>=90) return {c:'var(--teal)',  l:'EXCELLENT'};
+  if(v>=70) return {c:'var(--green)', l:'GOOD'};
+  if(v>=50) return {c:'var(--amber)', l:'DEGRADING'};
+  return          {c:'var(--red)',    l:'POOR'};
+}
+
+// ── Pill badge ─────────────────────────────────────────
+function setPill(id, on, manual) {
+  const el = document.getElementById(id);
+  if(manual) { el.className='pill pill-manual'; el.textContent='MANUAL'; return; }
+  el.className = 'pill '+(on?'pill-on':'pill-off');
+  el.textContent = on?'ON':'OFF';
+}
+
+// ── Log ────────────────────────────────────────────────
+function addLog(msg, type='') {
+  const body = document.getElementById('log-body');
+  const t = new Date().toTimeString().slice(0,8);
+  const row = document.createElement('div');
+  row.className = 'log-entry';
+  row.innerHTML = `<span class="log-time">${t}</span><span class="log-msg ${type}">${msg}</span>`;
+  body.prepend(row);
+  if(body.children.length > 200) body.lastChild.remove();
+}
+
+// ── CSV ────────────────────────────────────────────────
+function downloadCSV() {
+  if(!dataLog.length) { addLog('No data to export yet','warn'); return; }
+  const hdr = 'entry,inlet_ppm,outlet_ppm,efficiency_pct,ph,fan_state,pump_state';
+  const rows = dataLog.map(r => `${r.e},${r.inlet},${r.outlet},${r.eff},${r.ph},${r.fan},${r.pump}`);
+  const blob = new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ammonia_log_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  addLog(`Exported ${dataLog.length} rows to CSV`,'safe');
+  toast('CSV downloaded');
+}
+
+function clearData() {
+  if(!confirm('Clear all log data?')) return;
+  dataLog.length = 0; logEntry = 0;
+  try { localStorage.removeItem('nh3_datalog'); } catch(e) {}
+  document.getElementById('log-count').textContent = '0 entries';
+  document.getElementById('sr-logs').textContent = '0';
+  renderHistory();
+  addLog('Log cleared','warn');
+  toast('Log cleared');
+}
+
+// ── History ────────────────────────────────────────────
+function hSort(key) {
+  if(hSortKey===key) hSortDir*=-1; else { hSortKey=key; hSortDir=-1; }
+  ['e','inlet','outlet','eff','ph'].forEach(k => {
+    const el=document.getElementById('arr-'+k); if(el) el.textContent='';
+    const th=el?.parentElement; if(th) th.classList.remove('sort-active');
+  });
+  const el=document.getElementById('arr-'+key);
+  if(el) { el.textContent=hSortDir===-1?' ▾':' ▴'; el.parentElement.classList.add('sort-active'); }
+  renderHistory();
+}
+
+function renderHistory() {
+  const q=(document.getElementById('hist-search').value||'').toLowerCase();
+  let rows=dataLog.filter(r=>!q||Object.values(r).some(v=>String(v).toLowerCase().includes(q)));
+  rows.sort((a,b)=>hSortDir*(parseFloat(a[hSortKey])-parseFloat(b[hSortKey])));
+  if(rows.length) {
+    const n=rows.length;
+    const sIn=rows.reduce((s,r)=>s+parseFloat(r.inlet),0);
+    const sOut=rows.reduce((s,r)=>s+parseFloat(r.outlet),0);
+    const sEff=rows.reduce((s,r)=>s+parseFloat(r.eff),0);
+    const sPh=rows.reduce((s,r)=>s+parseFloat(r.ph),0);
+    document.getElementById('h-count').textContent = n;
+    document.getElementById('h-in').textContent  = (sIn/n).toFixed(2);
+    document.getElementById('h-out').textContent = (sOut/n).toFixed(2);
+    document.getElementById('h-eff').textContent = (sEff/n).toFixed(1)+'%';
+    document.getElementById('h-ph').textContent  = (sPh/n).toFixed(2);
+  } else {
+    ['h-count','h-in','h-out','h-eff','h-ph'].forEach(id=>document.getElementById(id).textContent='--');
+  }
+  const tb=document.getElementById('hist-tbody');
+  if(!rows.length) { tb.innerHTML=`<tr><td colspan="7" class="empty-state">No data recorded yet</td></tr>`; return; }
+  tb.innerHTML=rows.map(r=>{
+    const eff=Math.round(parseFloat(r.eff));
+    const ec=effColor(eff);
+    const phC=phColor2(parseFloat(r.ph));
+    const fanOn=r.fan==='1'||r.fan===1;
+    const pumpOn=r.pump==='1'||r.pump===1;
+    return `<tr>
+      <td style="color:var(--text3)">${r.e}</td>
+      <td>${r.inlet}</td>
+      <td>${r.outlet}</td>
+      <td><div class="eff-bar-wrap">
+        <div class="eff-bg"><div class="eff-fill" style="width:${eff}%;background:${ec.c}"></div></div>
+        <span style="color:${ec.c};font-size:10px">${eff}%</span>
+      </div></td>
+      <td style="color:${phC.c}">${r.ph}</td>
+      <td><span class="pill ${fanOn?'pill-on':'pill-off'}" style="font-size:9px">${fanOn?'ON':'OFF'}</span></td>
+      <td><span class="pill ${pumpOn?'pill-on':'pill-off'}" style="font-size:9px">${pumpOn?'ON':'OFF'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Chart ──────────────────────────────────────────────
+const canvas = document.getElementById('mainChart');
+const ctx = canvas.getContext('2d');
+function drawChart() {
+  const dpr=window.devicePixelRatio||1;
+  const W=canvas.parentElement.clientWidth-32, H=200;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
+  if(h.inlet.length<2){
+    ctx.fillStyle='#475569'; ctx.font='11px IBM Plex Mono,monospace';
+    ctx.textAlign='center'; ctx.fillText('Awaiting data...', W/2, H/2); return;
+  }
+  const pad={t:8,r:8,b:22,l:40};
+  const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+  const maxN=Math.max(...h.inlet,...h.outlet,30);
+  ctx.strokeStyle='rgba(29,42,58,.8)'; ctx.lineWidth=1;
+  [0,25,50,75,100].forEach(v=>{
+    if(v>maxN) return;
+    const y=pad.t+cH-(v/maxN)*cH;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+cW,y); ctx.stroke();
+    ctx.fillStyle='#475569'; ctx.font='9px IBM Plex Mono,monospace';
+    ctx.textAlign='right'; ctx.fillText(v, pad.l-4, y+3);
+  });
+  function line(data, color, max, dashed=false) {
+    if(data.length<2) return;
+    ctx.beginPath();
+    data.forEach((v,i)=>{
+      const x=pad.l+(i/(MAX_PTS-1))*cW, y=pad.t+cH-(Math.min(v,max)/max)*cH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    if(dashed) ctx.setLineDash([4,4]); else ctx.setLineDash([]);
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.lineJoin='round'; ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  line(h.inlet,  '#f43f5e', maxN);
+  line(h.outlet, '#10b981', maxN);
+  line(h.ph.map(v=>(v/14)*maxN),   '#8b5cf6', maxN, true);
+  line(h.eff.map(v=>(v/100)*maxN), '#f59e0b', maxN, true);
+}
+window.addEventListener('resize', drawChart);
+drawChart();
+
+// ── Reboot ESP32 ───────────────────────────────────────
+function rebootESP32() {
+  if (!mqttClient || !mqttClient.connected) { addLog('Not connected — cannot send reboot', 'warn'); return; }
+  if (!confirm('Reboot the ESP32? It will reconnect in ~5 seconds.')) return;
+  mqttClient.publish('device/cmd', 'REBOOT');
+  addLog('Reboot command sent to ESP32', 'warn');
+  toast('Rebooting ESP32...');
+  const btn = document.getElementById('reboot-btn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Rebooting...';
+  setTimeout(() => { btn.disabled = false; btn.textContent = '⟳ Reboot ESP32'; }, 10000);
+}
+
+// ── Actuator commands ──────────────────────────────────
+function sendCmd(topic, msg) {
+  if(!mqttClient||!mqttClient.connected) { addLog('Not connected to broker','warn'); return; }
+  mqttClient.publish(topic, msg);
+  addLog(`${topic.split('/')[1].toUpperCase()} → ${msg}`,'info');
+
+  // Optimistic UI update — don't wait for ESP32 confirmation
+  const name = topic.split('/')[1]; // 'fan' or 'pump'
+  if(name === 'fan' || name === 'pump') {
+    if(msg === 'MANUAL_ON') {
+      setPill('badge-'+name, true, true);
+      document.getElementById('act-'+name).classList.add('running');
+      document.getElementById('mode-'+name).textContent = 'MANUAL';
+    } else if(msg === 'MANUAL_OFF') {
+      setPill('badge-'+name, false, true);
+      document.getElementById('act-'+name).classList.remove('running');
+      document.getElementById('mode-'+name).textContent = 'MANUAL';
+    } else if(msg === 'AUTO') {
+      // Resume auto — clear manual flag only, let ESP32 status confirm actual relay state
+      document.getElementById('mode-'+name).textContent = 'AUTO';
+      // Keep current pill state until next sensor/status message arrives
+    }
+  }
+}
+
+function updateFanTimer() {
+  const on =parseInt(document.getElementById('fan-on').value)||15;
+  const off=parseInt(document.getElementById('fan-off').value)||420;
+  sendCmd('timer/fan/set', JSON.stringify({on_min:on,off_min:off}));
+  toast('Fan timer updated');
+}
+
+function updatePumpTimer() {
+  const delay=parseInt(document.getElementById('pump-delay').value)||360;
+  const on   =parseInt(document.getElementById('pump-on').value)||60;
+  const off  =parseInt(document.getElementById('pump-off').value)||375;
+  sendCmd('timer/pump/set', JSON.stringify({delay_min:delay,on_min:on,off_min:off}));
+  toast('Pump timer updated');
+}
+
+function calCmd(cmd, successMsg) {
+  if(!mqttClient||!mqttClient.connected) { addLog('Not connected','warn'); return; }
+  mqttClient.publish('calibration/cmd', cmd);
+  addLog(`Calibration: ${cmd}`,'info');
+  toast(successMsg);
+}
+
+// ── Connection UI ──────────────────────────────────────
+function setConn(state, label) {
+  document.getElementById('conn-dot').className = state;
+  document.getElementById('conn-label').textContent = label;
+}
+
+// ── MQTT ───────────────────────────────────────────────
+function startMQTT() {
+  const host=document.getElementById('cfg-host').value.trim();
+  const port=parseInt(document.getElementById('cfg-port').value);
+  const cid =document.getElementById('cfg-cid').value.trim();
+  const user=document.getElementById('cfg-user').value.trim();
+  const pass=document.getElementById('cfg-pass').value;
+  hideModal();
+  setConn('connecting','CONNECTING...');
+  addLog(`Connecting → ${host}:${port}`,'info');
+  const opts={clientId:cid,clean:true,reconnectPeriod:5000};
+  if(user){opts.username=user;opts.password=pass;}
+  mqttClient = mqtt.connect(`wss://${host}:${port}/mqtt`,opts);
+
+  mqttClient.on('connect',()=>{
+    setConn('connected','CONNECTED');
+    addLog('Broker connected','safe');
+    ['sensor/nh3/inlet','sensor/nh3/outlet','sensor/nh3/efficiency',
+     'sensor/ph','sensor/voltages','sensor/status',
+     'actuator/fan/state','actuator/pump/state','calibration/info',
+     'device/status'
+    ].forEach(t=>mqttClient.subscribe(t));
+    addLog('Subscribed to all topics','info');
+  });
+  mqttClient.on('reconnect',()=>{ setConn('connecting','RECONNECTING...'); addLog('Reconnecting...','warn'); });
+  mqttClient.on('offline',  ()=>{ setConn('disconnected','DISCONNECTED');  addLog('Broker offline','danger'); });
+  mqttClient.on('error',   e=>addLog('Error: '+e.message,'danger'));
+
+  mqttClient.on('message',(topic,msg)=>{
+    const m=msg.toString().trim();
+
+    if(topic==='sensor/nh3/inlet'){
+      const v=parseFloat(m); if(isNaN(v)) return;
+      latestInlet=v;
+      h.inlet.push(v); if(h.inlet.length>MAX_PTS) h.inlet.shift();
+      const lv=nhColor(v);
+      setGauge('arc-inlet','glow-inlet','v-inlet','l-inlet', v, 150, lv.c, lv.l, 'ppm');
+      document.getElementById('card-inlet').classList.toggle('lit', true);
+      if(v>=75){ document.getElementById('alert-bar').style.display='block'; addLog(`DANGER inlet NH₃ = ${v.toFixed(2)} ppm`,'danger'); }
+      else document.getElementById('alert-bar').style.display='none';
+      drawChart();
+    }
+
+    else if(topic==='sensor/nh3/outlet'){
+      const v=parseFloat(m); if(isNaN(v)) return;
+      latestOutlet=v;
+      h.outlet.push(v); if(h.outlet.length>MAX_PTS) h.outlet.shift();
+      const lv=nhColor(v);
+      setGauge('arc-outlet','glow-outlet','v-outlet','l-outlet', v, 150, lv.c, lv.l, 'ppm');
+      if(v>=50) addLog(`Warning: outlet NH₃ = ${v.toFixed(2)} ppm`,'warn');
+      drawChart();
+    }
+
+    else if(topic==='sensor/nh3/efficiency'){
+      const v=parseFloat(m); if(isNaN(v)) return;
+      latestEff=v;
+      h.eff.push(v); if(h.eff.length>MAX_PTS) h.eff.shift();
+      const lv=effColor(v);
+      setGauge('arc-eff','glow-eff','v-eff','l-eff', v, 100, lv.c, lv.l, '%');
+      document.getElementById('eff-tag').textContent = v.toFixed(1)+'%';
+      drawChart();
+    }
+
+    else if(topic==='sensor/ph'){
+      const v=parseFloat(m); if(isNaN(v)) return;
+      latestPh=v;
+      h.ph.push(v); if(h.ph.length>MAX_PTS) h.ph.shift();
+      const lv=phColor2(v);
+      setGauge('arc-ph','glow-ph','v-ph','l-ph', v, 14, lv.c, lv.l, 'pH');
+      document.getElementById('lv-ph').textContent = v.toFixed(2);
+      if(v<5||v>10) addLog(`pH alert: ${v.toFixed(2)} — check scrubbing liquid`,'ph');
+      // write log row
+      if(latestInlet!==null&&latestOutlet!==null&&latestEff!==null){
+        logEntry++;
+        const row={e:logEntry,inlet:latestInlet.toFixed(2),outlet:latestOutlet.toFixed(2),eff:latestEff.toFixed(2),ph:v.toFixed(2),fan:latestFan,pump:latestPump};
+        dataLog.push(row);
+        if(dataLog.length>MAX_LOG) dataLog.shift();
+        // Persist to localStorage so log survives page close/refresh
+        try { localStorage.setItem('nh3_datalog', JSON.stringify(dataLog)); } catch(e) {}
+        const cnt=dataLog.length;
+        document.getElementById('log-count').textContent = cnt+' entries';
+        document.getElementById('sr-logs').textContent = cnt;
+        // avg label on chart
+        if(h.inlet.length){
+          const avg=(h.inlet.reduce((a,b)=>a+b,0)/h.inlet.length).toFixed(1);
+          document.getElementById('avg-label').textContent = 'AVG INLET '+avg+' ppm';
+        }
+      }
+      drawChart();
+    }
+
+    else if(topic==='sensor/voltages'){
+      try{
+        const d=JSON.parse(m);
+        if(d.phV!==undefined){
+          const pv=d.phV.toFixed(3);
+          document.getElementById('lv-phv').textContent   = pv+' V';
+          document.getElementById('live-ph4').textContent = pv+' V live';
+          document.getElementById('live-ph10').textContent= pv+' V live';
+        }
+        if(d.mqInV!==undefined){
+          document.getElementById('lv-mqv').textContent   = d.mqInV.toFixed(3)+' V';
+          document.getElementById('live-r0v').textContent = d.mqInV.toFixed(3)+' V live';
+        }
+        if(d.r0!==undefined) document.getElementById('lv-r0').textContent = d.r0.toFixed(3)+' kΩ';
+      }catch(e){}
+    }
+
+    else if(topic==='sensor/status'){
+      try{
+        const d=JSON.parse(m);
+        const ip=d.ip||'--';
+        ['s-ip','sr-ip'].forEach(id=>document.getElementById(id).textContent=ip);
+        const rssi=(d.rssi||'--')+' dBm';
+        ['s-rssi','sr-rssi'].forEach(id=>document.getElementById(id).textContent=rssi);
+        const heap=d.heap?(d.heap/1024).toFixed(1)+' KB':'--';
+        ['s-heap','sr-heap'].forEach(id=>document.getElementById(id).textContent=heap);
+        const u=d.uptime||0;
+        const hh=Math.floor(u/3600),mm=Math.floor((u%3600)/60),ss=u%60;
+        const upStr=String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0');
+        ['s-uptime','sr-uptime'].forEach(id=>document.getElementById(id).textContent=upStr);
+        document.getElementById('s-fan').textContent  = d.fanState ?'ON':'OFF';
+        document.getElementById('s-pump').textContent = d.pumpState?'ON':'OFF';
+        document.getElementById('cd-fan').textContent  = fmtMs(d.fanCdMs||0);
+        document.getElementById('cd-pump').textContent = fmtMs(d.pumpCdMs||0);
+        document.getElementById('mode-fan').textContent  = d.fanManual ?'MANUAL':'AUTO';
+        document.getElementById('mode-pump').textContent = d.pumpManual?'MANUAL':'AUTO';
+        setPill('badge-fan',  d.fanState,  d.fanManual);
+        setPill('badge-pump', d.pumpState, d.pumpManual);
+        document.getElementById('act-fan').classList.toggle('running',  !!d.fanState);
+        document.getElementById('act-pump').classList.toggle('running', !!d.pumpState);
+        latestFan=d.fanState?1:0; latestPump=d.pumpState?1:0;
+        if(d.fanOnMin)   document.getElementById('fan-on').value    = d.fanOnMin;
+        if(d.fanOffMin)  document.getElementById('fan-off').value   = d.fanOffMin;
+        if(d.pumpDelMin) document.getElementById('pump-delay').value = d.pumpDelMin;
+        if(d.pumpOnMin)  document.getElementById('pump-on').value   = d.pumpOnMin;
+        if(d.pumpOffMin) document.getElementById('pump-off').value  = d.pumpOffMin;
+      }catch(e){}
+    }
+
+    else if(topic==='actuator/fan/state'){
+      const on=m==='ON';
+      setPill('badge-fan',on,false);
+      document.getElementById('act-fan').classList.toggle('running',on);
+    }
+
+    else if(topic==='actuator/pump/state'){
+      const on=m==='ON';
+      setPill('badge-pump',on,false);
+      document.getElementById('act-pump').classList.toggle('running',on);
+    }
+
+    else if(topic==='device/status'){
+      if(m==='REBOOTING') addLog('ESP32 is rebooting — reconnect in ~5s','warn');
+    }
+
+    else if(topic==='calibration/info'){
+      try{
+        const d=JSON.parse(m);
+        if(d.ph4!==undefined)  document.getElementById('saved-ph4').textContent  = d.ph4.toFixed(3)+' V';
+        if(d.ph10!==undefined) document.getElementById('saved-ph10').textContent = d.ph10.toFixed(3)+' V';
+        if(d.r0!==undefined)   document.getElementById('saved-r0').textContent   = d.r0.toFixed(3)+' kΩ';
+      }catch(e){}
+    }
+  });
+}
+</script>
+</body>
+</html>
